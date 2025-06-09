@@ -116,13 +116,11 @@ def decode_temperature():
         reconstructed_temp = scaler.inverse_transform(scaled_prediction)
         # Extract the single temperature value
         final_temp = reconstructed_temp[0][0]
-        logging.info(f"Reconstructed temperature: {final_temp:.2f}°C")
-
+        logging.info(f"temperature Received")
+        print("Reconstructed temp == " + str(round(float(final_temp), 2)))
         # --- Return Response ---
-        return jsonify({
-            "reconstructed_temperature_celsius": round(float(final_temp), 2), # Ensure float for JSON
-            "received_latent_vector": latent_vector # Echo back the input
-        })
+        return jsonify({"message": "Decoded successfully."})
+
 
     except Exception as e:
         logging.error(f"Error during decoding or inverse transform: {e}", exc_info=True)
