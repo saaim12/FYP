@@ -157,3 +157,5 @@ The system consists of three main components:
 * Add error handling for more network conditions on the ESP32.
 * Implement quantization-aware training for the TFLite model to potentially reduce its size further.
 * Add data integrity checks (e.g., checksums or HMAC) to the transmitted payload.
+#   F Y P  
+ 
