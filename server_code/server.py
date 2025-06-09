@@ -119,7 +119,7 @@ def decode_temperature():
         logging.info(f"temperature Received")
         print("Reconstructed temp == " + str(round(float(final_temp), 2)))
         # --- Return Response ---
-        return jsonify({"message": "Decoded successfully."})
+        return jsonify({"message": "Decoded successfully.",'reconstructed_temperature_celsius':str(round(float(final_temp), 2))})
 
 
     except Exception as e:

@@ -171,7 +171,7 @@ with open(tflite_model_path, 'wb') as f:
 print(f"Encoder TFLite model saved to: {tflite_model_path}")
 
 # --- Convert TFLite model to C array ---
-c_array_path = os.path.join(TFLITE_EXPORT_DIR, 'encoder_model_data.cc')
+c_array_path = os.path.join(TFLITE_EXPORT_DIR, 'encoder_model_data.h')
 c_var_name = 'g_encoder_model_data'
 exit_code_xxd = -1 # Initialize exit code
 try:
