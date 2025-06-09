@@ -158,4 +158,5 @@ The system consists of three main components:
 * Implement quantization-aware training for the TFLite model to potentially reduce its size further.
 * Add data integrity checks (e.g., checksums or HMAC) to the transmitted payload.
 #   F Y P  
+ #   F Y P  
  
