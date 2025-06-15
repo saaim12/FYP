@@ -1,0 +1,163 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import os
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+import subprocess
+import sys
+
+# --- Configuration ---
+NUM_SAMPLES = 5000
+EPOCHS = 100
+BATCH_SIZE = 32
+TEMP_MIN = 0.0
+TEMP_MAX = 150.0
+LATENT_DIM = 2
+NOISE_FACTOR = 0.5
+
+EXPORT_DIR = 'exported_models'
+TFLITE_EXPORT_DIR = os.path.join(EXPORT_DIR, 'tflite')
+KERAS_EXPORT_DIR = os.path.join(EXPORT_DIR, 'keras')
+os.makedirs(TFLITE_EXPORT_DIR, exist_ok=True)
+os.makedirs(KERAS_EXPORT_DIR, exist_ok=True)
+
+# --- Generate Synthetic Temperature Data ---
+time = np.linspace(0, 100, NUM_SAMPLES)
+base_temp = TEMP_MIN + (TEMP_MAX - TEMP_MIN) / 2 * (1 + np.sin(time * 0.1))
+noise = np.random.normal(0, NOISE_FACTOR, NUM_SAMPLES)
+temperature_data = np.clip(base_temp + noise, TEMP_MIN, TEMP_MAX).reshape(-1, 1).astype(np.float32)
+
+# --- Scale Data ---
+scaler = MinMaxScaler()
+scaler.fit(np.array([[TEMP_MIN], [TEMP_MAX]]))
+scaled_temperature_data = scaler.fit_transform(temperature_data)
+scaler_filename = os.path.join(KERAS_EXPORT_DIR, "scaler.joblib")
+joblib.dump(scaler, scaler_filename)
+
+# --- Build Encoder Model (ESP32 Compatible) ---
+input_layer = keras.Input(shape=(1,), name='encoder_input')
+x = layers.Dense(16, activation='relu')(input_layer)
+x = layers.Dense(16, activation='relu')(x)
+output_layer = layers.Dense(LATENT_DIM, activation='linear', name='encoder_output')(x)
+encoder = keras.Model(input_layer, output_layer)
+
+# --- Build Decoder Model (Server-side) ---
+decoder_input = keras.Input(shape=(LATENT_DIM,), name='decoder_input')
+x = layers.Dense(16, activation='relu')(decoder_input)
+x = layers.Dense(16, activation='relu')(x)
+decoder_output = layers.Dense(1, activation='sigmoid')(x)
+decoder = keras.Model(decoder_input, decoder_output)
+
+# --- Build Autoencoder ---
+auto_input = keras.Input(shape=(1,), name='auto_input')
+encoded = encoder(auto_input)
+decoded = decoder(encoded)
+autoencoder = keras.Model(auto_input, decoded)
+autoencoder.compile(optimizer='adam', loss='mse')
+
+# --- Train Autoencoder ---
+history = autoencoder.fit(
+    scaled_temperature_data,
+    scaled_temperature_data,
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE,
+    validation_split=0.2,
+    shuffle=True,
+    verbose=1
+)
+
+# --- Plot Training Loss ---
+plt.figure(figsize=(8, 5))
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title("Training and Validation Loss")
+plt.xlabel("Epochs")
+plt.ylabel("MSE Loss")
+plt.legend()
+plt.grid(True)
+plt.savefig(os.path.join(EXPORT_DIR, "loss_plot.png"))
+plt.show()
+
+# --- Evaluate Model ---
+reconstructed = autoencoder.predict(scaled_temperature_data)
+mse = np.mean((scaled_temperature_data - reconstructed) ** 2)
+print(f"Reconstruction MSE: {mse:.6f}")
+
+# --- Plot Original vs Reconstructed Temperatures ---
+original_temp = scaler.inverse_transform(scaled_temperature_data)
+reconstructed_temp = scaler.inverse_transform(reconstructed)
+
+plt.figure(figsize=(10, 5))
+plt.plot(original_temp[:200], label='Original', linewidth=2)
+plt.plot(reconstructed_temp[:200], label='Reconstructed', linestyle='dashed')
+plt.title("Original vs Reconstructed Temperatures")
+plt.xlabel("Sample Index")
+plt.ylabel("Temperature (°C)")
+plt.legend()
+plt.grid(True)
+plt.savefig(os.path.join(EXPORT_DIR, "reconstruction_plot.png"))
+plt.show()
+
+# --- Visualize Latent Space ---
+latent_vectors = encoder.predict(scaled_temperature_data)
+
+plt.figure(figsize=(8, 6))
+plt.scatter(latent_vectors[:, 0], latent_vectors[:, 1], s=1, alpha=0.5)
+plt.title("Latent Space Representation")
+plt.xlabel("Latent Dimension 1")
+plt.ylabel("Latent Dimension 2")
+plt.grid(True)
+plt.savefig(os.path.join(EXPORT_DIR, "latent_space.png"))
+plt.show()
+
+# --- Export Encoder to TFLite ---
+tflite_model = tf.lite.TFLiteConverter.from_keras_model(encoder).convert()
+tflite_path = os.path.join(TFLITE_EXPORT_DIR, "encoder_model_new.tflite")
+with open(tflite_path, 'wb') as f:
+    f.write(tflite_model)
+
+# --- Convert TFLite to C Array using xxd ---
+c_array_path = os.path.join(TFLITE_EXPORT_DIR, 'encoder_model_data_new.h')
+c_var_name = 'g_encoder_model_data'
+
+try:
+    find_cmd = 'where' if sys.platform == 'win32' else 'which'
+    result = subprocess.run([find_cmd, 'xxd'], capture_output=True, text=True, shell=True)
+    xxd_path = result.stdout.strip().splitlines()[0] if result.returncode == 0 else ""
+
+    if not xxd_path:
+        raise FileNotFoundError("xxd not found")
+
+    with open(c_array_path, 'w') as f_out:
+        subprocess.run([xxd_path, '-i', tflite_path], stdout=f_out, text=True, check=True)
+
+    with open(c_array_path, 'r') as f:
+        content = f.read()
+
+    base_var = os.path.basename(tflite_path).replace('.', '_').replace('-', '_')
+    content = content.replace(f'unsigned char {base_var}', f'const unsigned char {c_var_name}[]')
+    content = content.replace(f'unsigned int {base_var}_len', f'const unsigned int {c_var_name}_len')
+    content = f"""
+#ifndef ENCODER_MODEL_DATA_H
+#define ENCODER_MODEL_DATA_H
+
+// Auto-generated by xxd. Do not edit manually.
+// Model expects scaled input (0 to 1 range)
+
+{content}
+
+#endif // ENCODER_MODEL_DATA_H
+"""
+    with open(c_array_path, 'w') as f:
+        f.write(content)
+
+except Exception as e:
+    print(f"Error during C array conversion: {e}")
+
+# --- Save Decoder ---
+decoder.save(os.path.join(KERAS_EXPORT_DIR, 'decoder_model.keras'))
+
+print("\n✅ All model components and plots exported successfully.")

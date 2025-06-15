@@ -31,7 +31,7 @@ const char* server_endpoint = "/decode"; // Endpoint defined in Flask server
 
 // Model Configuration (Should match Python training)
 const float TEMP_MIN = 0.0;
-const float TEMP_MAX = 50.0;
+const float TEMP_MAX = 150.0;
 const int LATENT_DIM = 2; // Must match the model's output dimension
 
 // How often to send data (in milliseconds)
