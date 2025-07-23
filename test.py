@@ -39,7 +39,7 @@ except Exception as e:
     exit()
 
 # --- Test Samples ---
-test_temperatures = np.array([0, 25, 50, 75,32,32.8,32.1, 100, 125, 150], dtype=np.float32).reshape(-1, 1)
+test_temperatures = np.array([0, 25,32,34,38,45,55, 50, 75,32,32.8,32.1, 100, 125, 150], dtype=np.float32).reshape(-1, 1)
 scaled = scaler.transform(test_temperatures)
 
 # --- Encode Using TFLite Encoder ---

@@ -33,7 +33,7 @@ temperature_data = np.clip(base_temp + noise, TEMP_MIN, TEMP_MAX).reshape(-1, 1)
 # --- Scale Data ---
 scaler = MinMaxScaler()
 scaler.fit(np.array([[TEMP_MIN], [TEMP_MAX]]))
-scaled_temperature_data = scaler.fit_transform(temperature_data)
+scaled_temperature_data = scaler.transform(temperature_data)
 scaler_filename = os.path.join(KERAS_EXPORT_DIR, "scaler.joblib")
 joblib.dump(scaler, scaler_filename)
 
